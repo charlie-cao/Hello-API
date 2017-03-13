@@ -26,7 +26,7 @@ trait HashIdTrait
     /**
      * All ID's passed with all endpoints will be decoded before entering the Application
      */
-    public function runEndpointsHashedIdsDecoder()
+    public function runHashedIdsDecoder()
     {
         if (Config::get('hello.hash-id')) {
             Route::bind('id', function ($id, $route) {
@@ -72,16 +72,13 @@ trait HashIdTrait
      *
      * @return  array
      */
-    protected function decodeHashedIdsBeforeApplyingValidationRules(Array $requestData)
+    protected function decodeHashedIdsBeforeValidation(Array $requestData)
     {
         // the hash ID feature must be enabled to use this decoder feature.
         if (Config::get('hello.hash-id') && isset($this->decode) && !empty($this->decode)) {
-
             // iterate over each key (ID that needs to be decoded) and call keys locator to decode them
             foreach ($this->decode as $key) {
-
                 $requestData = $this->locateAndDecodeIds($requestData, $key);
-
             }
         }
 
@@ -107,7 +104,6 @@ trait HashIdTrait
      */
     private function locateAndDecodeIds($requestData, $key)
     {
-
         if ($this->stringEndsWithChars('.*', $key)) {
             // if the key of Type 3:
             $this->decodeType3Key($requestData, $key);
@@ -130,7 +126,7 @@ trait HashIdTrait
     {
         // decode single key
         if (isset($requestData[$key])) {
-            $requestData[$key] = $this->decode($requestData[$key]);
+            $requestData[$key] = $this->decode($requestData[$key], $key);
         }
     }
 
@@ -146,8 +142,7 @@ trait HashIdTrait
         array_walk_recursive($requestData, function (&$value, $key) use ($idToDecode) {
 
             if ($key == $idToDecode) {
-
-                $value = $this->decode($value);
+                $value = $this->decode($value, $key);
             }
 
         });
@@ -159,10 +154,9 @@ trait HashIdTrait
      */
     private function decodeType3Key(&$requestData, $key)
     {
-
         $idToDecode = $this->removeLastOccurrenceFromString($key, '.*');
 
-        $this->findKeyAndReturnValue($requestData, $idToDecode, function ($ids) {
+        $this->findKeyAndReturnValue($requestData, $idToDecode, function ($ids) use ($key){
 
             if (!is_array($ids)) {
                 throw new IncorrectIdException('Expected ID\'s to be in array. Please wrap your ID\'s in an Array and send them back.');
@@ -171,13 +165,12 @@ trait HashIdTrait
             $decodedIds = [];
 
             foreach ($ids as $id) {
-                $decodedIds[] = $this->decode($id);
+                $decodedIds[] = $this->decode($id, $key);
             }
 
             // callback return
             return $decodedIds;
         });
-
     }
 
     /**
@@ -236,7 +229,6 @@ trait HashIdTrait
         return preg_match('/' . preg_quote($needle, '/') . '$/', $haystack);
     }
 
-
     /**
      * @param array $ids
      *
@@ -253,14 +245,15 @@ trait HashIdTrait
     }
 
     /**
-     * @param $id
+     * @param      $id
+     * @param null $parameter
      *
-     * @return  mixed
+     * @return  array
      */
-    public function decode($id)
+    public function decode($id, $parameter = null)
     {
-        if (is_int($id)) {
-            throw new IncorrectIdException('Only Hashed ID\'s allowed.');
+        if (is_numeric($id)) {
+            throw new IncorrectIdException('Only Hashed ID\'s allowed' . (!is_null($parameter) ? " ($parameter)." : '.'));
         }
 
         return empty($this->decoder($id)) ? [] : $this->decoder($id)[0];
